@@ -1,50 +1,26 @@
-# phpipam-mcp-server
+# phpIPAM MCP Server
+
+[![Python 3.8+](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Pylint](https://github.com/InfraMCP/phpipam-mcp-server/actions/workflows/pylint.yml/badge.svg)](https://github.com/InfraMCP/phpipam-mcp-server/actions/workflows/pylint.yml)
+[![Safety Security Scan](https://github.com/InfraMCP/phpipam-mcp-server/actions/workflows/safety-scan.yml/badge.svg)](https://github.com/InfraMCP/phpipam-mcp-server/actions/workflows/safety-scan.yml)
+[![Dependency Security Check](https://github.com/InfraMCP/phpipam-mcp-server/actions/workflows/dependency-security.yml/badge.svg)](https://github.com/InfraMCP/phpipam-mcp-server/actions/workflows/dependency-security.yml)
 
 Model Context Protocol server for phpIPAM IP address management and network infrastructure.
-
-## Features
-
-### Phase 3 (v0.2.0) - Write Operations
-- ✅ Authentication with phpIPAM using app code tokens
-- ✅ List IP sections with compact output format
-- ✅ Get subnets within sections with usage statistics and limits
-- ✅ Search IP addresses and hostnames with result limits
-- ✅ Get detailed subnet information with address limits
-- ✅ List VLANs with result limits
-- ✅ List VRF instances with route distinguisher info
-- ✅ List physical locations for network infrastructure
-- ✅ List DNS nameservers with configuration details
-- ✅ Search subnets by CIDR, description, or criteria
-- ✅ **Create subnets** with section, CIDR, description, and VLAN assignment
-- ✅ **Reserve IP addresses** with automatic or manual assignment
-- ✅ **Update IP addresses** with hostname, description, and owner changes
-- ✅ **Delete IP addresses** to release reservations
-- ✅ **Update subnets** with description, VLAN, and VRF modifications
-- ✅ **Delete subnets** with proper warnings
-- ✅ Field filtering to optimize context window usage
-- ✅ Result limiting to prevent context overflow
-- ✅ Compact output formatting for better readability
-
-### Planned Features
-- **Phase 2 (v0.1.1)**: Advanced discovery tools, VRF management, location tools
-- **Phase 3 (v0.2.0)**: Create, update, and delete operations
 
 ## Installation
 
 ### Prerequisites
-- Python 3.8+
+- Python 3.10+
 - phpIPAM instance with API access
 - App configured in phpIPAM with "SSL with App Code token" security
 
-### Environment Variables
+### From PyPI (when published)
 ```bash
-export PHPIPAM_URL="https://ipam.example.com/"
-export PHPIPAM_USERNAME="api-user"  # For reference only
-export PHPIPAM_PASSWORD="your_app_code_token"  # App code from phpIPAM
-export PHPIPAM_APP_ID="your_app_id"
+pip install phpipam-mcp-server
 ```
 
-### Install from Source
+### From Source
 ```bash
 git clone https://github.com/InfraMCP/phpipam-mcp-server.git
 cd phpipam-mcp-server
@@ -65,7 +41,12 @@ Add to your MCP client configuration:
 {
   "mcpServers": {
     "phpipam": {
-      "command": "phpipam-mcp-server"
+      "command": "phpipam-mcp-server",
+      "env": {
+        "PHPIPAM_URL": "https://ipam.example.com/",
+        "PHPIPAM_APP_ID": "your_app_id",
+        "PHPIPAM_APP_CODE": "your_app_code_token"
+      }
     }
   }
 }
