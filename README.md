@@ -4,14 +4,16 @@ Model Context Protocol server for phpIPAM IP address management and network infr
 
 ## Features
 
-### Phase 1 (v0.1.0) - Basic Functionality
+### Phase 1 (v0.1.1) - Context Window Optimization
 - ✅ Authentication with phpIPAM using app code tokens
-- ✅ List IP sections
-- ✅ Get subnets within sections with usage statistics
-- ✅ Search IP addresses and hostnames
-- ✅ Get detailed subnet information
-- ✅ List VLANs
+- ✅ List IP sections with compact output format
+- ✅ Get subnets within sections with usage statistics and limits
+- ✅ Search IP addresses and hostnames with result limits
+- ✅ Get detailed subnet information with address limits
+- ✅ List VLANs with result limits
 - ✅ Field filtering to optimize context window usage
+- ✅ Result limiting to prevent context overflow
+- ✅ Compact output formatting for better readability
 
 ### Planned Features
 - **Phase 2 (v0.1.1)**: Advanced discovery tools, VRF management, location tools
@@ -65,24 +67,28 @@ Add to your MCP client configuration:
 List all IP sections from phpIPAM.
 - `include_fields`: Comma-separated fields or "all" for complete data
 
-#### `get_section_subnets(section_id, include_usage=True, include_fields="")`
+#### `get_section_subnets(section_id, include_usage=True, include_fields="", limit=20)`
 Get subnets within a specific section.
 - `section_id`: Section ID to query
 - `include_usage`: Include usage statistics (default: True)
 - `include_fields`: Field filtering options
+- `limit`: Maximum results to return (default: 20, max: 100)
 
-#### `search_addresses(ip_or_hostname)`
+#### `search_addresses(ip_or_hostname, limit=10)`
 Search for IP addresses or hostnames.
 - `ip_or_hostname`: IP address or hostname to search for
+- `limit`: Maximum results to return (default: 10, max: 50)
 
-#### `get_subnet_details(subnet_id, include_addresses=False)`
+#### `get_subnet_details(subnet_id, include_addresses=False, address_limit=10)`
 Get detailed subnet information.
 - `subnet_id`: Subnet ID to query
 - `include_addresses`: Include IP addresses in subnet (default: False)
+- `address_limit`: Maximum addresses to show (default: 10, max: 50)
 
-#### `list_vlans(domain_id=None)`
+#### `list_vlans(domain_id=None, limit=20)`
 List VLANs from phpIPAM.
 - `domain_id`: Optional domain ID filter
+- `limit`: Maximum results to return (default: 20, max: 100)
 
 ## Configuration
 
