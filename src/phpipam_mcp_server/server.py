@@ -12,14 +12,14 @@ def get_phpipam_config():
     """Get phpIPAM configuration from environment variables"""
     base_url = os.getenv('PHPIPAM_URL')
     app_id = os.getenv('PHPIPAM_APP_ID')
-    token = os.getenv('PHPIPAM_PASSWORD')
+    token = os.getenv('PHPIPAM_APP_CODE')
 
     if not base_url:
         raise ValueError("PHPIPAM_URL environment variable is required")
     if not app_id:
         raise ValueError("PHPIPAM_APP_ID environment variable is required")
     if not token:
-        raise ValueError("PHPIPAM_PASSWORD environment variable is required")
+        raise ValueError("PHPIPAM_APP_CODE environment variable is required")
 
     return {
         'base_url': base_url.rstrip('/'),
@@ -189,7 +189,7 @@ def _handle_error(e: Exception, operation: str) -> str:
     if "401" in error_msg or "Unauthorized" in error_msg:
         return (
             f"Authentication failed for {operation}. "
-            "Check PHPIPAM_PASSWORD (app code token) environment variable."
+            "Check PHPIPAM_APP_CODE (app code token) environment variable."
         )
     if "Connection" in error_msg or "timeout" in error_msg.lower():
         return f"Connection failed for {operation}. Check network connectivity and PHPIPAM_URL."

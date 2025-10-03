@@ -1,27 +1,42 @@
-# phpipam-mcp-server
+# phpIPAM MCP Server
+
+[![Python 3.8+](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Pylint](https://github.com/InfraMCP/phpipam-mcp-server/actions/workflows/pylint.yml/badge.svg)](https://github.com/InfraMCP/phpipam-mcp-server/actions/workflows/pylint.yml)
+[![Safety Security Scan](https://github.com/InfraMCP/phpipam-mcp-server/actions/workflows/safety-scan.yml/badge.svg)](https://github.com/InfraMCP/phpipam-mcp-server/actions/workflows/safety-scan.yml)
+[![Dependency Security Check](https://github.com/InfraMCP/phpipam-mcp-server/actions/workflows/dependency-security.yml/badge.svg)](https://github.com/InfraMCP/phpipam-mcp-server/actions/workflows/dependency-security.yml)
 
 Model Context Protocol server for phpIPAM IP address management and network infrastructure.
 
 ## Features
 
-### Phase 2 (v0.1.2) - Advanced Discovery Tools
-- ✅ Authentication with phpIPAM using app code tokens
-- ✅ List IP sections with compact output format
-- ✅ Get subnets within sections with usage statistics and limits
-- ✅ Search IP addresses and hostnames with result limits
-- ✅ Get detailed subnet information with address limits
-- ✅ List VLANs with result limits
-- ✅ List VRF instances with route distinguisher info
-- ✅ List physical locations for network infrastructure
-- ✅ List DNS nameservers with configuration details
-- ✅ Search subnets by CIDR, description, or criteria
-- ✅ Field filtering to optimize context window usage
-- ✅ Result limiting to prevent context overflow
-- ✅ Compact output formatting for better readability
+### Phase 3 (v0.2.1) - Complete CRUD Operations
+- ✅ **Read Operations**: Full discovery and search capabilities
+- ✅ **Write Operations**: Create, update, and delete subnets and IP addresses
+- ✅ **Authentication**: Secure app code token authentication
+- ✅ **Context Optimization**: Result limits and compact formatting
+- ✅ **Error Handling**: Comprehensive validation and error reporting
+- ✅ **Code Quality**: Perfect 10.00/10 pylint score
 
-### Planned Features
-- **Phase 2 (v0.1.1)**: Advanced discovery tools, VRF management, location tools
-- **Phase 3 (v0.2.0)**: Create, update, and delete operations
+### Discovery Tools
+- List IP sections with compact output format
+- Get subnets within sections with usage statistics and limits
+- Search IP addresses and hostnames with result limits
+- Get detailed subnet information with address limits
+- List VLANs with result limits
+- List VRF instances with route distinguisher info
+- List physical locations for network infrastructure
+- List DNS nameservers with configuration details
+- Search subnets by CIDR, description, or criteria
+- Field filtering to optimize context window usage
+
+### Write Operations
+- **create_subnet**: Create new subnets with section, CIDR, description, and VLAN assignment
+- **reserve_ip_address**: Reserve IP addresses with automatic or manual assignment
+- **update_ip_address**: Update IP addresses with hostname, description, and owner changes
+- **delete_ip_address**: Delete/release IP address reservations
+- **update_subnet**: Update subnets with description, VLAN, and VRF modifications
+- **delete_subnet**: Delete subnets with proper warnings
 
 ## Installation
 
@@ -30,15 +45,12 @@ Model Context Protocol server for phpIPAM IP address management and network infr
 - phpIPAM instance with API access
 - App configured in phpIPAM with "SSL with App Code token" security
 
-### Environment Variables
+### From PyPI (when published)
 ```bash
-export PHPIPAM_URL="https://ipam.example.com/"
-export PHPIPAM_USERNAME="api-user"  # For reference only
-export PHPIPAM_PASSWORD="your_app_code_token"  # App code from phpIPAM
-export PHPIPAM_APP_ID="your_app_id"
+pip install phpipam-mcp-server
 ```
 
-### Install from Source
+### From Source
 ```bash
 git clone https://github.com/InfraMCP/phpipam-mcp-server.git
 cd phpipam-mcp-server
@@ -59,7 +71,12 @@ Add to your MCP client configuration:
 {
   "mcpServers": {
     "phpipam": {
-      "command": "phpipam-mcp-server"
+      "command": "phpipam-mcp-server",
+      "env": {
+        "PHPIPAM_URL": "https://ipam.example.com/",
+        "PHPIPAM_APP_ID": "your_app_id",
+        "PHPIPAM_APP_CODE": "your_app_code_token"
+      }
     }
   }
 }
@@ -110,6 +127,46 @@ List DNS nameservers with configuration details.
 Search subnets by CIDR, description, or other criteria.
 - `query`: Search term (CIDR, description, etc.)
 - `limit`: Maximum results to return (default: 10, max: 50)
+
+### Write Operations
+
+#### `create_subnet(section_id, subnet, mask, description="", vlan_id=None)`
+Create a new subnet in phpIPAM.
+- `section_id`: Section ID where subnet will be created
+- `subnet`: Network address (e.g., "192.168.1.0")
+- `mask`: Subnet mask (e.g., "24")
+- `description`: Optional subnet description
+- `vlan_id`: Optional VLAN ID to assign
+
+#### `reserve_ip_address(subnet_id, ip_address=None, hostname="", description="", owner="")`
+Reserve an IP address in a subnet.
+- `subnet_id`: Subnet ID where IP will be reserved
+- `ip_address`: Specific IP to reserve (optional - auto-assigns if not provided)
+- `hostname`: Hostname for the IP address
+- `description`: Description for the IP address
+- `owner`: Owner of the IP address
+
+#### `update_ip_address(address_id, hostname=None, description=None, owner=None)`
+Update an existing IP address entry.
+- `address_id`: ID of the address to update
+- `hostname`: New hostname (optional)
+- `description`: New description (optional)
+- `owner`: New owner (optional)
+
+#### `delete_ip_address(address_id)`
+Delete/release an IP address reservation.
+- `address_id`: ID of the address to delete
+
+#### `update_subnet(subnet_id, description=None, vlan_id=None, vrf_id=None)`
+Update an existing subnet.
+- `subnet_id`: ID of the subnet to update
+- `description`: New description (optional)
+- `vlan_id`: New VLAN ID (optional)
+- `vrf_id`: New VRF ID (optional)
+
+#### `delete_subnet(subnet_id)`
+Delete a subnet from phpIPAM.
+- `subnet_id`: ID of the subnet to delete
 
 ## Configuration
 
