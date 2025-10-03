@@ -4,13 +4,17 @@ Model Context Protocol server for phpIPAM IP address management and network infr
 
 ## Features
 
-### Phase 1 (v0.1.1) - Context Window Optimization
+### Phase 2 (v0.1.2) - Advanced Discovery Tools
 - ✅ Authentication with phpIPAM using app code tokens
 - ✅ List IP sections with compact output format
 - ✅ Get subnets within sections with usage statistics and limits
 - ✅ Search IP addresses and hostnames with result limits
 - ✅ Get detailed subnet information with address limits
 - ✅ List VLANs with result limits
+- ✅ List VRF instances with route distinguisher info
+- ✅ List physical locations for network infrastructure
+- ✅ List DNS nameservers with configuration details
+- ✅ Search subnets by CIDR, description, or criteria
 - ✅ Field filtering to optimize context window usage
 - ✅ Result limiting to prevent context overflow
 - ✅ Compact output formatting for better readability
@@ -89,6 +93,23 @@ Get detailed subnet information.
 List VLANs from phpIPAM.
 - `domain_id`: Optional domain ID filter
 - `limit`: Maximum results to return (default: 20, max: 100)
+
+#### `list_vrfs(limit=20)`
+List VRF instances from phpIPAM.
+- `limit`: Maximum results to return (default: 20, max: 100)
+
+#### `list_locations(limit=20)`
+List physical locations for network infrastructure.
+- `limit`: Maximum results to return (default: 20, max: 100)
+
+#### `list_nameservers(limit=20)`
+List DNS nameservers with configuration details.
+- `limit`: Maximum results to return (default: 20, max: 100)
+
+#### `search_subnets(query, limit=10)`
+Search subnets by CIDR, description, or other criteria.
+- `query`: Search term (CIDR, description, etc.)
+- `limit`: Maximum results to return (default: 10, max: 50)
 
 ## Configuration
 

@@ -388,6 +388,184 @@ def list_vlans(domain_id: str = None, limit: int = 20) -> str:
     except Exception as e:  # pylint: disable=broad-exception-caught
         return _handle_error(e, "listing VLANs")
 
+@mcp.tool()
+def list_vrfs(limit: int = 20) -> str:
+    """List VRF instances from phpIPAM.
+
+    CONTEXT OPTIMIZATION: Limited to 20 results by default.
+
+    Args:
+        limit: Maximum number of VRFs to return (default: 20, max: 100)
+    """
+    try:
+        result = make_request("vrf/")
+
+        if not result.get('success'):
+            return f"API Error: {result.get('message', 'Unknown error')}"
+
+        vrfs = result.get('data', [])
+        if not vrfs:
+            return "No VRFs found"
+
+        # Apply limit and field filtering
+        vrfs, truncated = apply_result_limit(vrfs, limit, 100)
+        default_fields = ['vrfId', 'name', 'rd', 'description']
+        vrfs = apply_field_filtering(vrfs, "", default_fields)
+
+        # Format as compact output
+        output = f"Found {len(vrfs)} VRFs"
+        if truncated:
+            output += f" (showing first {limit})"
+        output += ":\n"
+
+        for vrf in vrfs:
+            name = vrf.get('name', 'N/A')
+            rd = vrf.get('rd', 'N/A')
+            desc = vrf.get('description', 'N/A')
+            if desc and len(desc) > 40:
+                desc = desc[:40] + "..."
+            output += f"ID: {vrf.get('vrfId')}, Name: {name}, RD: {rd}, Desc: {desc}\n"
+        return output
+
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        return _handle_error(e, "listing VRFs")
+
+@mcp.tool()
+def list_locations(limit: int = 20) -> str:
+    """List physical locations from phpIPAM.
+
+    CONTEXT OPTIMIZATION: Limited to 20 results by default.
+
+    Args:
+        limit: Maximum number of locations to return (default: 20, max: 100)
+    """
+    try:
+        result = make_request("tools/locations/")
+
+        if not result.get('success'):
+            return f"API Error: {result.get('message', 'Unknown error')}"
+
+        locations = result.get('data', [])
+        if not locations:
+            return "No locations found"
+
+        # Apply limit and field filtering
+        locations, truncated = apply_result_limit(locations, limit, 100)
+        default_fields = ['id', 'name', 'address', 'description']
+        locations = apply_field_filtering(locations, "", default_fields)
+
+        # Format as compact output
+        output = f"Found {len(locations)} locations"
+        if truncated:
+            output += f" (showing first {limit})"
+        output += ":\n"
+
+        for loc in locations:
+            name = loc.get('name', 'N/A')
+            address = loc.get('address', 'N/A')
+            desc = loc.get('description', 'N/A')
+            if desc and len(desc) > 30:
+                desc = desc[:30] + "..."
+            output += f"ID: {loc.get('id')}, Name: {name}, Address: {address}, Desc: {desc}\n"
+        return output
+
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        return _handle_error(e, "listing locations")
+
+@mcp.tool()
+def list_nameservers(limit: int = 20) -> str:
+    """List DNS nameservers from phpIPAM.
+
+    CONTEXT OPTIMIZATION: Limited to 20 results by default.
+
+    Args:
+        limit: Maximum number of nameservers to return (default: 20, max: 100)
+    """
+    try:
+        result = make_request("tools/nameservers/")
+
+        if not result.get('success'):
+            return f"API Error: {result.get('message', 'Unknown error')}"
+
+        nameservers = result.get('data', [])
+        if not nameservers:
+            return "No nameservers found"
+
+        # Apply limit and field filtering
+        nameservers, truncated = apply_result_limit(nameservers, limit, 100)
+        default_fields = ['id', 'name', 'namesrv1', 'description']
+        nameservers = apply_field_filtering(nameservers, "", default_fields)
+
+        # Format as compact output
+        output = f"Found {len(nameservers)} nameservers"
+        if truncated:
+            output += f" (showing first {limit})"
+        output += ":\n"
+
+        for ns in nameservers:
+            name = ns.get('name', 'N/A')
+            server = ns.get('namesrv1', 'N/A')
+            desc = ns.get('description', 'N/A')
+            if desc and len(desc) > 30:
+                desc = desc[:30] + "..."
+            output += f"ID: {ns.get('id')}, Name: {name}, Server: {server}, Desc: {desc}\n"
+        return output
+
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        return _handle_error(e, "listing nameservers")
+
+@mcp.tool()
+def search_subnets(query: str, limit: int = 10) -> str:
+    """Search subnets by CIDR, description, or other criteria.
+
+    CONTEXT OPTIMIZATION: Limited to 10 results by default.
+
+    Args:
+        query: Search term (CIDR, description, etc.)
+        limit: Maximum number of results to return (default: 10, max: 50)
+    """
+    try:
+        result = make_request(f"subnets/search/{query}/")
+
+        if not result.get('success'):
+            return f"No subnets found matching '{query}'"
+
+        subnets = result.get('data', [])
+        if not subnets:
+            return f"No subnets found matching '{query}'"
+
+        # Apply limit and field filtering
+        subnets, truncated = apply_result_limit(subnets, limit, 50)
+        default_fields = ['id', 'subnet', 'mask', 'description', 'sectionId', 'usage']
+        subnets = apply_field_filtering(subnets, "", default_fields)
+
+        # Format as compact output
+        output = f"Found {len(subnets)} subnets matching '{query}'"
+        if truncated:
+            output += f" (showing first {limit})"
+        output += ":\n"
+
+        for subnet in subnets:
+            cidr = f"{subnet.get('subnet')}/{subnet.get('mask')}"
+            desc = subnet.get('description', 'N/A')
+            if desc and len(desc) > 40:
+                desc = desc[:40] + "..."
+            section_id = subnet.get('sectionId', 'N/A')
+
+            output += f"ID: {subnet.get('id')}, CIDR: {cidr}, Section: {section_id}, Desc: {desc}"
+
+            if subnet.get('usage'):
+                usage = subnet['usage']
+                used_pct = usage.get('Used_percent', 0)
+                output += f", Used: {used_pct:.1f}%"
+            output += "\n"
+        return output
+
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        if "404" in str(e):
+            return f"No subnets found matching '{query}'"
+        return _handle_error(e, f"searching subnets for '{query}'")
+
 def main():
     """Main entry point for the MCP server."""
     mcp.run()
