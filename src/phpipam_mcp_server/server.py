@@ -89,7 +89,7 @@ def format_address_output(addresses, search_term, limit, truncated):
         desc = addr.get('description', 'N/A')
         if desc and len(desc) > 30:
             desc = desc[:30] + "..."
-        output += f"IP: {addr.get('ip')}, Host: {hostname}, Desc: {desc}\n"
+        output += f"ID: {addr.get('id')}, IP: {addr.get('ip')}, Host: {hostname}, Desc: {desc}\n"
     return output
 
 def format_vlan_output(vlans, limit, truncated):
