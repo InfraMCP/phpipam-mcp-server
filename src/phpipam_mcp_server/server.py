@@ -53,6 +53,135 @@ def filter_fields(data, include_fields=None, exclude_fields=None):
         return [filter_single_item(item) for item in data]
     return filter_single_item(data)
 
+def format_subnet_output(subnets, section_id, limit, truncated, include_usage):
+    """Format subnet data for compact output."""
+    output = f"Found {len(subnets)} subnets in section {section_id}"
+    if truncated:
+        output += f" (showing first {limit})"
+    output += ":\n"
+
+    for subnet in subnets:
+        cidr = f"{subnet.get('subnet')}/{subnet.get('mask')}"
+        desc = subnet.get('description', 'N/A')
+        if desc and len(desc) > 50:
+            desc = desc[:50] + "..."
+        elif not desc:
+            desc = 'N/A'
+        output += f"ID: {subnet.get('id')}, CIDR: {cidr}, Desc: {desc}"
+
+        if include_usage and subnet.get('usage'):
+            usage = subnet['usage']
+            used_pct = usage.get('Used_percent', 0)
+            free_pct = usage.get('freehosts_percent', 0)
+            output += f", Used: {used_pct:.1f}%, Free: {free_pct:.1f}%"
+        output += "\n"
+    return output
+
+def format_address_output(addresses, search_term, limit, truncated):
+    """Format address data for compact output."""
+    output = f"Found {len(addresses)} addresses matching '{search_term}'"
+    if truncated:
+        output += f" (showing first {limit})"
+    output += ":\n"
+
+    for addr in addresses:
+        hostname = addr.get('hostname', 'N/A')
+        desc = addr.get('description', 'N/A')
+        if desc and len(desc) > 30:
+            desc = desc[:30] + "..."
+        output += f"IP: {addr.get('ip')}, Host: {hostname}, Desc: {desc}\n"
+    return output
+
+def format_vlan_output(vlans, limit, truncated):
+    """Format VLAN data for compact output."""
+    output = f"Found {len(vlans)} VLANs"
+    if truncated:
+        output += f" (showing first {limit})"
+    output += ":\n"
+
+    for vlan in vlans:
+        name = vlan.get('name', 'N/A')
+        number = vlan.get('number', 'N/A')
+        desc = vlan.get('description', 'N/A')
+        if desc and len(desc) > 40:
+            desc = desc[:40] + "..."
+        output += f"ID: {vlan.get('vlanId')}, Number: {number}, "
+        output += f"Name: {name}, Desc: {desc}\n"
+    return output
+
+def format_subnet_details(subnet, subnet_id, include_addresses, address_limit):
+    """Format subnet details with optional addresses."""
+    cidr = f"{subnet.get('subnet')}/{subnet.get('mask')}"
+    desc = subnet.get('description', 'N/A')
+
+    response = f"Subnet {subnet_id} ({cidr}):\n"
+    response += f"Description: {desc}\n"
+    response += f"Section ID: {subnet.get('sectionId')}\n"
+
+    if subnet.get('usage'):
+        usage = subnet['usage']
+        used = usage.get('Used', 0)
+        used_pct = usage.get('Used_percent', 0)
+        free = usage.get('freehosts', 0)
+        free_pct = usage.get('freehosts_percent', 0)
+        response += f"Usage: {used} used ({used_pct:.1f}%), {free} free ({free_pct:.1f}%)\n"
+
+    if include_addresses:
+        response += get_subnet_addresses(subnet_id, address_limit)
+
+    return response
+
+def get_subnet_addresses(subnet_id, address_limit):
+    """Get and format subnet addresses."""
+    try:
+        addr_result = make_request(f"subnets/{subnet_id}/addresses/")
+        if not addr_result.get('success'):
+            return "\nCould not retrieve addresses for this subnet"
+
+        addresses = addr_result.get('data', [])
+        if not addresses:
+            return "\nNo addresses found in this subnet"
+
+        # Apply limit
+        address_limit = min(address_limit, 50)
+        if len(addresses) > address_limit:
+            addresses = addresses[:address_limit]
+            truncated = True
+        else:
+            truncated = False
+
+        response = f"\nAddresses ({len(addresses)}"
+        if truncated:
+            response += f", showing first {address_limit}"
+        response += "):\n"
+
+        for addr in addresses:
+            ip = addr.get('ip')
+            hostname = addr.get('hostname', 'N/A')
+            if hostname and len(hostname) > 25:
+                hostname = hostname[:25] + "..."
+            response += f"  {ip} - {hostname}\n"
+        return response
+
+    except Exception:  # pylint: disable=broad-exception-caught
+        return "\nCould not retrieve addresses for this subnet"
+
+def apply_field_filtering(data, include_fields, default_fields):
+    """Apply field filtering to data."""
+    if include_fields == "all":
+        return data
+    if include_fields:
+        fields = [f.strip() for f in include_fields.split(',')]
+        return filter_fields(data, include_fields=fields)
+    return filter_fields(data, include_fields=default_fields)
+
+def apply_result_limit(data, limit, max_limit):
+    """Apply result limiting with truncation tracking."""
+    limit = min(limit, max_limit)
+    if len(data) > limit:
+        return data[:limit], True
+    return data, False
+
 def _handle_error(e: Exception, operation: str) -> str:
     """Handle errors consistently across all tools."""
     error_msg = str(e)
@@ -128,7 +257,7 @@ def list_sections(include_fields: str = "") -> str:
             return output
         return "No sections found"
 
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         return _handle_error(e, "listing sections")
 
 @mcp.tool()
@@ -155,53 +284,17 @@ def get_section_subnets(section_id: str, include_usage: bool = True,
         if not subnets:
             return f"No subnets found in section {section_id}"
 
-        # Apply limit
-        limit = min(limit, 100)  # Cap at 100
-        if len(subnets) > limit:
-            subnets = subnets[:limit]
-            truncated = True
-        else:
-            truncated = False
+        # Apply limit and field filtering
+        subnets, truncated = apply_result_limit(subnets, limit, 100)
 
-        # Apply field filtering
-        if include_fields == "all":
-            pass
-        elif include_fields:
-            fields = [f.strip() for f in include_fields.split(',')]
-            subnets = filter_fields(subnets, include_fields=fields)
-        else:
-            # Minimal essential fields
-            essential_fields = ['id', 'subnet', 'mask', 'description']
-            if include_usage:
-                essential_fields.append('usage')
-            subnets = filter_fields(subnets, include_fields=essential_fields)
+        default_fields = ['id', 'subnet', 'mask', 'description']
+        if include_usage:
+            default_fields.append('usage')
+        subnets = apply_field_filtering(subnets, include_fields, default_fields)
 
-        # Format as compact output
-        if subnets:
-            output = f"Found {len(subnets)} subnets in section {section_id}"
-            if truncated:
-                output += f" (showing first {limit})"
-            output += ":\n"
+        return format_subnet_output(subnets, section_id, limit, truncated, include_usage)
 
-            for subnet in subnets:
-                cidr = f"{subnet.get('subnet')}/{subnet.get('mask')}"
-                desc = subnet.get('description', 'N/A')
-                if desc and len(desc) > 50:
-                    desc = desc[:50] + "..."
-                elif not desc:
-                    desc = 'N/A'
-                output += f"ID: {subnet.get('id')}, CIDR: {cidr}, Desc: {desc}"
-
-                if include_usage and subnet.get('usage'):
-                    usage = subnet['usage']
-                    used_pct = usage.get('Used_percent', 0)
-                    free_pct = usage.get('freehosts_percent', 0)
-                    output += f", Used: {used_pct:.1f}%, Free: {free_pct:.1f}%"
-                output += "\n"
-            return output
-        return f"No subnets found in section {section_id}"
-
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         return _handle_error(e, f"getting subnets for section {section_id}")
 
 @mcp.tool()
@@ -221,36 +314,17 @@ def search_addresses(ip_or_hostname: str, limit: int = 10) -> str:
             return f"API Error: {result.get('message', 'No results found')}"
 
         addresses = result.get('data', [])
+        if not addresses:
+            return f"No addresses found matching '{ip_or_hostname}'"
 
-        # Apply limit
-        limit = min(limit, 50)  # Cap at 50
-        if len(addresses) > limit:
-            addresses = addresses[:limit]
-            truncated = True
-        else:
-            truncated = False
+        # Apply limit and field filtering
+        addresses, truncated = apply_result_limit(addresses, limit, 50)
+        default_fields = ['id', 'subnetId', 'ip', 'hostname', 'description']
+        addresses = apply_field_filtering(addresses, "", default_fields)
 
-        # Filter to essential fields
-        essential_fields = ['id', 'subnetId', 'ip', 'hostname', 'description']
-        addresses = filter_fields(addresses, include_fields=essential_fields)
+        return format_address_output(addresses, ip_or_hostname, limit, truncated)
 
-        # Format as compact output
-        if addresses:
-            output = f"Found {len(addresses)} addresses matching '{ip_or_hostname}'"
-            if truncated:
-                output += f" (showing first {limit})"
-            output += ":\n"
-
-            for addr in addresses:
-                hostname = addr.get('hostname', 'N/A')
-                desc = addr.get('description', 'N/A')
-                if desc and len(desc) > 30:
-                    desc = desc[:30] + "..."
-                output += f"IP: {addr.get('ip')}, Host: {hostname}, Desc: {desc}\n"
-            return output
-        return f"No addresses found matching '{ip_or_hostname}'"
-
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         if "404" in str(e):
             return f"No addresses found matching '{ip_or_hostname}'. " + \
                    "Try searching with a complete IP address or exact hostname."
@@ -269,64 +343,15 @@ def get_subnet_details(subnet_id: str, include_addresses: bool = False,
         address_limit: Max addresses to show if include_addresses=True (default: 10)
     """
     try:
-        # Get subnet details
         result = make_request(f"subnets/{subnet_id}/")
 
         if not result.get('success'):
             return f"API Error: {result.get('message', 'Subnet not found')}"
 
         subnet = result.get('data', {})
+        return format_subnet_details(subnet, subnet_id, include_addresses, address_limit)
 
-        # Format subnet info compactly
-        cidr = f"{subnet.get('subnet')}/{subnet.get('mask')}"
-        desc = subnet.get('description', 'N/A')
-
-        response = f"Subnet {subnet_id} ({cidr}):\n"
-        response += f"Description: {desc}\n"
-        response += f"Section ID: {subnet.get('sectionId')}\n"
-
-        if subnet.get('usage'):
-            usage = subnet['usage']
-            used = usage.get('Used', 0)
-            used_pct = usage.get('Used_percent', 0)
-            free = usage.get('freehosts', 0)
-            free_pct = usage.get('freehosts_percent', 0)
-            response += f"Usage: {used} used ({used_pct:.1f}%), {free} free ({free_pct:.1f}%)\n"
-
-        if include_addresses:
-            try:
-                addr_result = make_request(f"subnets/{subnet_id}/addresses/")
-                if addr_result.get('success'):
-                    addresses = addr_result.get('data', [])
-
-                    # Apply limit
-                    address_limit = min(address_limit, 50)  # Cap at 50
-                    if len(addresses) > address_limit:
-                        addresses = addresses[:address_limit]
-                        truncated = True
-                    else:
-                        truncated = False
-
-                    if addresses:
-                        response += f"\nAddresses ({len(addresses)}"
-                        if truncated:
-                            response += f", showing first {address_limit}"
-                        response += "):\n"
-
-                        for addr in addresses:
-                            ip = addr.get('ip')
-                            hostname = addr.get('hostname', 'N/A')
-                            if hostname and len(hostname) > 25:
-                                hostname = hostname[:25] + "..."
-                            response += f"  {ip} - {hostname}\n"
-                    else:
-                        response += "\nNo addresses found in this subnet"
-            except Exception:
-                response += "\nCould not retrieve addresses for this subnet"
-
-        return response
-
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         return _handle_error(e, f"getting details for subnet {subnet_id}")
 
 @mcp.tool()
@@ -350,38 +375,17 @@ def list_vlans(domain_id: str = None, limit: int = 20) -> str:
             return f"API Error: {result.get('message', 'Unknown error')}"
 
         vlans = result.get('data', [])
+        if not vlans:
+            return "No VLANs found"
 
-        # Apply limit
-        limit = min(limit, 100)  # Cap at 100
-        if len(vlans) > limit:
-            vlans = vlans[:limit]
-            truncated = True
-        else:
-            truncated = False
+        # Apply limit and field filtering
+        vlans, truncated = apply_result_limit(vlans, limit, 100)
+        default_fields = ['vlanId', 'name', 'number', 'description']
+        vlans = apply_field_filtering(vlans, "", default_fields)
 
-        # Filter to essential fields
-        essential_fields = ['vlanId', 'name', 'number', 'description']
-        vlans = filter_fields(vlans, include_fields=essential_fields)
+        return format_vlan_output(vlans, limit, truncated)
 
-        # Format as compact output
-        if vlans:
-            output = f"Found {len(vlans)} VLANs"
-            if truncated:
-                output += f" (showing first {limit})"
-            output += ":\n"
-
-            for vlan in vlans:
-                name = vlan.get('name', 'N/A')
-                number = vlan.get('number', 'N/A')
-                desc = vlan.get('description', 'N/A')
-                if desc and len(desc) > 40:
-                    desc = desc[:40] + "..."
-                output += f"ID: {vlan.get('vlanId')}, Number: {number}, "
-                output += f"Name: {name}, Desc: {desc}\n"
-            return output
-        return "No VLANs found"
-
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         return _handle_error(e, "listing VLANs")
 
 def main():
