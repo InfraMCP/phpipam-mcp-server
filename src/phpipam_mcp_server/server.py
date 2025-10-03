@@ -566,6 +566,177 @@ def search_subnets(query: str, limit: int = 10) -> str:
             return f"No subnets found matching '{query}'"
         return _handle_error(e, f"searching subnets for '{query}'")
 
+@mcp.tool()
+def create_subnet(section_id: str, subnet: str, mask: str, *, description: str = "",
+                 vlan_id: str = None) -> str:
+    """Create a new subnet in phpIPAM.
+
+    Args:
+        section_id: Section ID where subnet will be created
+        subnet: Network address (e.g., "192.168.1.0")
+        mask: Subnet mask (e.g., "24")
+        description: Optional description for the subnet
+        vlan_id: Optional VLAN ID
+    """
+    try:
+        data = {
+            "subnet": subnet,
+            "mask": mask,
+            "sectionId": section_id,
+            "description": description
+        }
+
+        if vlan_id:
+            data["vlanId"] = vlan_id
+
+        result = make_request("subnets/", method="POST", data=data)
+
+        if not result.get('success'):
+            return f"Failed to create subnet: {result.get('message', 'Unknown error')}"
+
+        subnet_id = result.get('id')
+        return f"✅ Subnet created successfully: {subnet}/{mask} (ID: {subnet_id})"
+
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        return _handle_error(e, f"creating subnet {subnet}/{mask}")
+
+@mcp.tool()
+def reserve_ip_address(subnet_id: str, ip: str = None, hostname: str = "",
+                      description: str = "", owner: str = "") -> str:
+    """Reserve an IP address in a subnet.
+
+    Args:
+        subnet_id: Subnet ID where IP will be reserved
+        ip: Specific IP address to reserve (optional - will find first available)
+        hostname: Hostname for the IP address
+        description: Description for the IP address
+        owner: Owner of the IP address
+    """
+    try:
+        data = {
+            "subnetId": subnet_id,
+            "hostname": hostname,
+            "description": description,
+            "owner": owner
+        }
+
+        if ip:
+            data["ip"] = ip
+
+        result = make_request("addresses/", method="POST", data=data)
+
+        if not result.get('success'):
+            return f"Failed to reserve IP: {result.get('message', 'Unknown error')}"
+
+        address_id = result.get('id')
+        assigned_ip = result.get('data', ip or 'auto-assigned')
+        return f"✅ IP address reserved: {assigned_ip} (ID: {address_id})"
+
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        return _handle_error(e, f"reserving IP address {ip or 'auto'}")
+
+@mcp.tool()
+def update_ip_address(address_id: str, hostname: str = None, description: str = None,
+                     owner: str = None) -> str:
+    """Update an existing IP address record.
+
+    Args:
+        address_id: ID of the IP address to update
+        hostname: New hostname (optional)
+        description: New description (optional)
+        owner: New owner (optional)
+    """
+    try:
+        data = {}
+        if hostname is not None:
+            data["hostname"] = hostname
+        if description is not None:
+            data["description"] = description
+        if owner is not None:
+            data["owner"] = owner
+
+        if not data:
+            return "No fields specified for update"
+
+        result = make_request(f"addresses/{address_id}/", method="PATCH", data=data)
+
+        if not result.get('success'):
+            return f"Failed to update IP: {result.get('message', 'Unknown error')}"
+
+        return f"✅ IP address updated successfully (ID: {address_id})"
+
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        return _handle_error(e, f"updating IP address {address_id}")
+
+@mcp.tool()
+def delete_ip_address(address_id: str) -> str:
+    """Delete/release an IP address reservation.
+
+    Args:
+        address_id: ID of the IP address to delete
+    """
+    try:
+        result = make_request(f"addresses/{address_id}/", method="DELETE")
+
+        if not result.get('success'):
+            return f"Failed to delete IP: {result.get('message', 'Unknown error')}"
+
+        return f"✅ IP address deleted successfully (ID: {address_id})"
+
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        return _handle_error(e, f"deleting IP address {address_id}")
+
+@mcp.tool()
+def update_subnet(subnet_id: str, description: str = None, vlan_id: str = None,
+                 vrf_id: str = None) -> str:
+    """Update an existing subnet.
+
+    Args:
+        subnet_id: ID of the subnet to update
+        description: New description (optional)
+        vlan_id: New VLAN ID (optional)
+        vrf_id: New VRF ID (optional)
+    """
+    try:
+        data = {}
+        if description is not None:
+            data["description"] = description
+        if vlan_id is not None:
+            data["vlanId"] = vlan_id
+        if vrf_id is not None:
+            data["vrfId"] = vrf_id
+
+        if not data:
+            return "No fields specified for update"
+
+        result = make_request(f"subnets/{subnet_id}/", method="PATCH", data=data)
+
+        if not result.get('success'):
+            return f"Failed to update subnet: {result.get('message', 'Unknown error')}"
+
+        return f"✅ Subnet updated successfully (ID: {subnet_id})"
+
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        return _handle_error(e, f"updating subnet {subnet_id}")
+
+@mcp.tool()
+def delete_subnet(subnet_id: str) -> str:
+    """Delete a subnet (WARNING: This will delete all IP addresses in the subnet).
+
+    Args:
+        subnet_id: ID of the subnet to delete
+    """
+    try:
+        result = make_request(f"subnets/{subnet_id}/", method="DELETE")
+
+        if not result.get('success'):
+            return f"Failed to delete subnet: {result.get('message', 'Unknown error')}"
+
+        return f"✅ Subnet deleted successfully (ID: {subnet_id})"
+
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        return _handle_error(e, f"deleting subnet {subnet_id}")
+
 def main():
     """Main entry point for the MCP server."""
     mcp.run()

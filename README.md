@@ -4,7 +4,7 @@ Model Context Protocol server for phpIPAM IP address management and network infr
 
 ## Features
 
-### Phase 2 (v0.1.2) - Advanced Discovery Tools
+### Phase 3 (v0.2.0) - Write Operations
 - ✅ Authentication with phpIPAM using app code tokens
 - ✅ List IP sections with compact output format
 - ✅ Get subnets within sections with usage statistics and limits
@@ -15,6 +15,12 @@ Model Context Protocol server for phpIPAM IP address management and network infr
 - ✅ List physical locations for network infrastructure
 - ✅ List DNS nameservers with configuration details
 - ✅ Search subnets by CIDR, description, or criteria
+- ✅ **Create subnets** with section, CIDR, description, and VLAN assignment
+- ✅ **Reserve IP addresses** with automatic or manual assignment
+- ✅ **Update IP addresses** with hostname, description, and owner changes
+- ✅ **Delete IP addresses** to release reservations
+- ✅ **Update subnets** with description, VLAN, and VRF modifications
+- ✅ **Delete subnets** with proper warnings
 - ✅ Field filtering to optimize context window usage
 - ✅ Result limiting to prevent context overflow
 - ✅ Compact output formatting for better readability
@@ -110,6 +116,46 @@ List DNS nameservers with configuration details.
 Search subnets by CIDR, description, or other criteria.
 - `query`: Search term (CIDR, description, etc.)
 - `limit`: Maximum results to return (default: 10, max: 50)
+
+### Write Operations
+
+#### `create_subnet(section_id, subnet, mask, *, description="", vlan_id=None)`
+Create a new subnet in phpIPAM.
+- `section_id`: Section ID where subnet will be created
+- `subnet`: Network address (e.g., "192.168.1.0")
+- `mask`: Subnet mask (e.g., "24")
+- `description`: Optional description for the subnet
+- `vlan_id`: Optional VLAN ID
+
+#### `reserve_ip_address(subnet_id, ip=None, hostname="", description="", owner="")`
+Reserve an IP address in a subnet.
+- `subnet_id`: Subnet ID where IP will be reserved
+- `ip`: Specific IP address to reserve (optional - will find first available)
+- `hostname`: Hostname for the IP address
+- `description`: Description for the IP address
+- `owner`: Owner of the IP address
+
+#### `update_ip_address(address_id, hostname=None, description=None, owner=None)`
+Update an existing IP address record.
+- `address_id`: ID of the IP address to update
+- `hostname`: New hostname (optional)
+- `description`: New description (optional)
+- `owner`: New owner (optional)
+
+#### `delete_ip_address(address_id)`
+Delete/release an IP address reservation.
+- `address_id`: ID of the IP address to delete
+
+#### `update_subnet(subnet_id, description=None, vlan_id=None, vrf_id=None)`
+Update an existing subnet.
+- `subnet_id`: ID of the subnet to update
+- `description`: New description (optional)
+- `vlan_id`: New VLAN ID (optional)
+- `vrf_id`: New VRF ID (optional)
+
+#### `delete_subnet(subnet_id)`
+Delete a subnet (WARNING: This will delete all IP addresses in the subnet).
+- `subnet_id`: ID of the subnet to delete
 
 ## Configuration
 
