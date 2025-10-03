@@ -152,6 +152,8 @@ def get_section_subnets(section_id: str, include_usage: bool = True,
             return f"API Error: {result.get('message', 'Unknown error')}"
 
         subnets = result.get('data', [])
+        if not subnets:
+            return f"No subnets found in section {section_id}"
 
         # Apply limit
         limit = min(limit, 100)  # Cap at 100
@@ -183,7 +185,11 @@ def get_section_subnets(section_id: str, include_usage: bool = True,
 
             for subnet in subnets:
                 cidr = f"{subnet.get('subnet')}/{subnet.get('mask')}"
-                desc = subnet.get('description', 'N/A')[:50]  # Truncate long descriptions
+                desc = subnet.get('description', 'N/A')
+                if desc and len(desc) > 50:
+                    desc = desc[:50] + "..."
+                elif not desc:
+                    desc = 'N/A'
                 output += f"ID: {subnet.get('id')}, CIDR: {cidr}, Desc: {desc}"
 
                 if include_usage and subnet.get('usage'):
@@ -245,6 +251,9 @@ def search_addresses(ip_or_hostname: str, limit: int = 10) -> str:
         return f"No addresses found matching '{ip_or_hostname}'"
 
     except Exception as e:
+        if "404" in str(e):
+            return f"No addresses found matching '{ip_or_hostname}'. " + \
+                   "Try searching with a complete IP address or exact hostname."
         return _handle_error(e, f"searching for '{ip_or_hostname}'")
 
 @mcp.tool()
