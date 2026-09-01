@@ -1,112 +1,110 @@
-# Déploiement du serveur MCP phpIPAM en mode distant (HTTP)
+# Deploying the phpIPAM MCP Server in remote (HTTP) mode
 
-Ce guide explique comment passer le serveur du mode `stdio` (installation locale
-sur le poste utilisateur) à un mode **distant** exposé sur une URL du type
-`https://phpipam.domaine.com/mcp`, accessible par n'importe quel client MCP
-compatible HTTP streamable.
+This guide explains how to move the server from `stdio` mode (a local install on
+the user's machine) to a **remote** mode exposed at a URL such as
+`https://phpipam.example.com/mcp`, reachable by any streamable-http capable MCP
+client.
 
-## Ce qui change
+## What changes
 
-Le serveur supporte désormais deux transports, choisis par la variable
-`MCP_TRANSPORT` :
+The server supports two transports, selected with the `MCP_TRANSPORT`
+environment variable:
 
-| Mode | `MCP_TRANSPORT` | Usage |
-|------|-----------------|-------|
-| Local (historique) | `stdio` (défaut) | Lancé par le client MCP sur la machine |
-| Distant | `streamable-http` | Service HTTP exposé sur `/mcp` derrière TLS |
+| Mode | `MCP_TRANSPORT` | Use case |
+|------|-----------------|----------|
+| Local (default) | `stdio` | Launched by the MCP client on the same machine |
+| Remote | `streamable-http` | HTTP service exposed at `/mcp` behind TLS |
 
-En mode distant :
+In remote mode:
 
-- l'endpoint MCP est servi sur le chemin `MCP_PATH` (défaut `/mcp`) ;
-- un **bearer token statique** (`MCP_BEARER_TOKEN`) protège l'accès ;
-- les identifiants phpIPAM sont fournis **par client** via des en-têtes HTTP
-  (`X-phpIPAM-*`), avec repli possible sur des variables d'environnement
-  partagées côté serveur ;
-- un endpoint `/health` non authentifié est disponible pour les sondes.
+- the MCP endpoint is served at the path `MCP_PATH` (default `/mcp`);
+- a **static bearer token** (`MCP_BEARER_TOKEN`) protects access;
+- phpIPAM credentials can be supplied **per client** via `X-phpIPAM-*` HTTP
+  headers, falling back to server-wide environment variables;
+- an unauthenticated `/health` endpoint is available for liveness probes.
 
-## Fichiers fournis
+## Provided files
 
-| Fichier | Rôle |
-|---------|------|
-| `src/phpipam_mcp_server/server.py` | Serveur adapté (remplace l'existant) |
-| `pyproject.toml` | Ajoute `uvicorn`, passe à Python 3.10+, v0.3.0 |
-| `Dockerfile` | Image du serveur en mode HTTP |
-| `docker-compose.yml` | Serveur + reverse proxy Caddy (TLS auto) |
-| `Caddyfile` | Configuration du domaine public |
-| `.env.example` | Modèle de variables d'environnement |
+| File | Purpose |
+|------|---------|
+| `src/phpipam_mcp_server/server.py` | The server implementation |
+| `pyproject.toml` | Declares `uvicorn`, requires Python 3.10+ |
+| `Dockerfile` | HTTP-mode server image |
+| `docker-compose.yml` | Server + Caddy reverse proxy (automatic TLS) |
+| `Caddyfile` | Public domain configuration |
+| `.env.example` | Environment variable template |
 
-## Configuration (variables d'environnement)
+## Configuration (environment variables)
 
-| Variable | Défaut | Description |
-|----------|--------|-------------|
-| `MCP_TRANSPORT` | `stdio` | Mettre `streamable-http` pour le mode distant |
-| `MCP_HOST` | `0.0.0.0` | Adresse d'écoute (HTTP) |
-| `MCP_PORT` | `8000` | Port d'écoute (HTTP) |
-| `MCP_PATH` | `/mcp` | Chemin de l'endpoint MCP |
-| `MCP_BEARER_TOKEN` | — | Token requis dans `Authorization: Bearer <token>` |
-| `PHPIPAM_URL` | — | URL phpIPAM partagée (repli) |
-| `PHPIPAM_APP_ID` | — | App ID phpIPAM partagé (repli) |
-| `PHPIPAM_APP_CODE` | — | App Code phpIPAM partagé (repli) |
-| `PHPIPAM_VERIFY_SSL` | `true` | Vérification TLS vers phpIPAM |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MCP_TRANSPORT` | `stdio` | Set to `streamable-http` for remote mode |
+| `MCP_HOST` | `0.0.0.0` | Listen address (HTTP) |
+| `MCP_PORT` | `8000` | Listen port (HTTP) |
+| `MCP_PATH` | `/mcp` | Path for the MCP endpoint |
+| `MCP_BEARER_TOKEN` | — | Token required in `Authorization: Bearer <token>` |
+| `PHPIPAM_URL` | — | Shared phpIPAM URL (fallback) |
+| `PHPIPAM_APP_ID` | — | Shared phpIPAM App ID (fallback) |
+| `PHPIPAM_APP_CODE` | — | Shared phpIPAM App Code (fallback) |
+| `PHPIPAM_VERIFY_SSL` | `true` | Verify TLS to phpIPAM |
 
-### En-têtes par client (mode « par client »)
+### Per-client headers (per-client credential mode)
 
-Chaque client peut fournir ses propres identifiants phpIPAM :
+Each client can supply its own phpIPAM credentials:
 
 ```
 Authorization: Bearer <MCP_BEARER_TOKEN>
 X-phpIPAM-URL: https://ipam.example.com/
-X-phpIPAM-App-Id: mon_app_id
-X-phpIPAM-App-Code: mon_app_code_token
+X-phpIPAM-App-Id: your_app_id
+X-phpIPAM-App-Code: your_app_code_token
 X-phpIPAM-Verify-Ssl: true
 ```
 
-Si un en-tête `X-phpIPAM-*` est absent, le serveur utilise la variable
-d'environnement correspondante. Vous pouvez donc laisser les variables
-`PHPIPAM_*` vides pour **imposer** des identifiants par client.
+If an `X-phpIPAM-*` header is absent, the server falls back to the corresponding
+environment variable. Leave the `PHPIPAM_*` variables empty to **require**
+per-client credentials.
 
-## Déploiement avec Docker + Caddy (recommandé)
+## Deploying with Docker + Caddy (recommended)
 
-1. Placez les fichiers fournis à la racine du dépôt (en remplaçant
-   `src/phpipam_mcp_server/server.py` et `pyproject.toml`).
-2. Créez le fichier `.env` :
+1. Keep the provided files at the repository root.
+2. Create the `.env` file:
 
    ```bash
    cp .env.example .env
-   # Générez un token solide :
+   # Generate a strong token:
    echo "MCP_BEARER_TOKEN=$(openssl rand -hex 32)" >> .env
    ```
 
-3. Renseignez votre domaine réel dans `Caddyfile` (remplacez
-   `phpipam.domaine.com`). Les ports 80 et 443 doivent être accessibles depuis
-   Internet pour l'émission du certificat Let's Encrypt.
-4. Démarrez :
+3. Set your real domain in the `Caddyfile` (replace `phpipam.example.com`).
+   Ports 80 and 443 must be reachable from the internet so Let's Encrypt can
+   issue a certificate.
+4. Start the stack:
 
    ```bash
    docker compose up -d --build
    ```
 
-5. Vérifiez la santé :
+5. Check health:
 
    ```bash
-   curl https://phpipam.domaine.com/health
+   curl https://phpipam.example.com/health
    # -> {"status":"ok"}
    ```
 
-L'endpoint MCP est alors disponible sur `https://phpipam.domaine.com/mcp`.
+The MCP endpoint is then available at `https://phpipam.example.com/mcp`.
 
-## Alternative : reverse proxy Nginx
+## Alternative: Nginx reverse proxy
 
-Si vous gérez déjà Nginx, exposez le conteneur (ou le service systemd) sur
-`127.0.0.1:8000` et utilisez :
+If you already run Nginx, expose the container (or the systemd service) on
+`127.0.0.1:8000` and use:
 
 ```nginx
 server {
     listen 443 ssl http2;
-    server_name phpipam.domaine.com;
+    server_name phpipam.example.com;
 
-    ssl_certificate     /etc/letsencrypt/live/phpipam.domaine.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/phpipam.domaine.com/privkey.pem;
+    ssl_certificate     /etc/letsencrypt/live/phpipam.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/phpipam.example.com/privkey.pem;
 
     location / {
         proxy_pass http://127.0.0.1:8000;
@@ -115,7 +113,7 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # Important pour le streaming (SSE) du transport MCP
+        # Important for the MCP transport's streaming (SSE) responses
         proxy_buffering off;
         proxy_cache off;
         proxy_read_timeout 3600s;
@@ -123,11 +121,11 @@ server {
 }
 ```
 
-> Le serveur ne réécrit pas les en-têtes `Authorization` / `X-phpIPAM-*` :
-> assurez-vous que le proxy les transmet bien (Nginx le fait par défaut ; ne pas
-> ajouter de `proxy_set_header Authorization "";`).
+> The server does not rewrite the `Authorization` / `X-phpIPAM-*` headers, so
+> make sure the proxy forwards them (Nginx does by default; do not add
+> `proxy_set_header Authorization "";`).
 
-## Alternative : service systemd (sans Docker)
+## Alternative: systemd service (without Docker)
 
 ```ini
 # /etc/systemd/system/phpipam-mcp.service
@@ -150,56 +148,56 @@ WantedBy=multi-user.target
 
 ```bash
 python3 -m venv /opt/phpipam-mcp/venv
-/opt/phpipam-mcp/venv/bin/pip install /chemin/vers/le/depot
+/opt/phpipam-mcp/venv/bin/pip install /path/to/the/repo
 systemctl enable --now phpipam-mcp
 ```
 
-## Configuration côté client MCP
+## MCP client configuration
 
-Pour un client supportant les serveurs MCP HTTP distants :
+For a client that supports remote HTTP MCP servers:
 
 ```json
 {
   "mcpServers": {
     "phpipam": {
       "type": "http",
-      "url": "https://phpipam.domaine.com/mcp",
+      "url": "https://phpipam.example.com/mcp",
       "headers": {
         "Authorization": "Bearer <MCP_BEARER_TOKEN>",
         "X-phpIPAM-URL": "https://ipam.example.com/",
-        "X-phpIPAM-App-Id": "mon_app_id",
-        "X-phpIPAM-App-Code": "mon_app_code_token"
+        "X-phpIPAM-App-Id": "your_app_id",
+        "X-phpIPAM-App-Code": "your_app_code_token"
       }
     }
   }
 }
 ```
 
-> Si vous utilisez des identifiants phpIPAM partagés côté serveur, omettez les
-> en-têtes `X-phpIPAM-*` et ne gardez que `Authorization`.
+> If you use shared phpIPAM credentials on the server, omit the `X-phpIPAM-*`
+> headers and keep only `Authorization`.
 
-## Test rapide en ligne de commande
+## Quick command-line test
 
 ```bash
-# Doit renvoyer 401 sans token
-curl -i https://phpipam.domaine.com/mcp
+# Should return 401 without a token
+curl -i https://phpipam.example.com/mcp
 
-# Avec token : initialise une session MCP (réponse JSON-RPC)
-curl -s https://phpipam.domaine.com/mcp \
+# With a token: initialize an MCP session (JSON-RPC response)
+curl -s https://phpipam.example.com/mcp \
   -H "Authorization: Bearer <MCP_BEARER_TOKEN>" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"1"}}}'
 ```
 
-## Notes de sécurité
+## Security notes
 
-- Le bearer token transite en clair : ne l'exposez **que** derrière HTTPS (le
-  reverse proxy s'en charge). Ne publiez jamais l'endpoint en HTTP nu.
-- Faites tourner (rotation) le `MCP_BEARER_TOKEN` régulièrement.
-- Le serveur expose des opérations d'écriture/suppression phpIPAM
-  (`create_subnet`, `delete_subnet`, `delete_ip_address`, …). Limitez les
-  permissions de l'application phpIPAM au strict nécessaire.
-- En mode stateless, des messages `ClosedResourceError` peuvent apparaître dans
-  les logs lors du teardown des sessions éphémères : c'est sans conséquence sur
-  les réponses.
+- The bearer token travels in clear text: only expose it **behind HTTPS** (the
+  reverse proxy handles this). Never publish the endpoint over plain HTTP.
+- Rotate the `MCP_BEARER_TOKEN` regularly.
+- The server exposes phpIPAM write/delete operations (`create_subnet`,
+  `delete_subnet`, `delete_ip_address`, ...). Limit the phpIPAM application's
+  permissions to the minimum required.
+- In stateless mode, `ClosedResourceError` messages may appear in the logs when
+  ephemeral sessions are torn down; these are harmless and do not affect
+  responses.
