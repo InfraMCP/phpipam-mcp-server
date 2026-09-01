@@ -32,21 +32,26 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install pylint
-        pip install mcp requests pydantic-settings
+        # Install the project itself so pylint analyses against the exact
+        # pinned runtime dependencies (e.g. mcp==1.27.2). Installing unpinned
+        # packages here previously pulled a newer, incompatible major version.
+        pip install .
     - name: Analysing the code with pylint
       run: |
-        # Run pylint and capture exit code
-        pylint src/phpipam_mcp_server/ --exit-zero --score=yes --output-format=json > pylint-report-${{ matrix.python-version }}.json || exit_code=$?
-        
-        # Also generate text output for console
-        pylint src/phpipam_mcp_server/ --exit-zero --score=yes || true
-        
-        # Exit codes: 0=no issues, 1=fatal, 2=error, 4=warning, 8=refactor, 16=convention
-        # Allow warnings (4), refactor (8), and convention (16) but fail on fatal (1) and error (2)
-        if [ ${exit_code:-0} -eq 1 ] || [ ${exit_code:-0} -eq 2 ]; then
+        # Generate a JSON report for the artifact / PR comment (never fails).
+        pylint src/phpipam_mcp_server/ --exit-zero --output-format=json \
+          > pylint-report-${{ matrix.python-version }}.json
+
+        # Gating run: capture pylint's real bitwise exit code (no --exit-zero).
+        # Bits: 1=fatal, 2=error, 4=warning, 8=refactor, 16=convention, 32=usage.
+        exit_code=0
+        pylint src/phpipam_mcp_server/ --score=yes || exit_code=$?
+
+        # Fail only on fatal (bit 1) or error (bit 2); allow the rest.
+        if [ $(( exit_code & 1 )) -ne 0 ] || [ $(( exit_code & 2 )) -ne 0 ]; then
           echo "❌ Pylint found fatal errors or errors that must be fixed"
           exit 1
-        elif [ ${exit_code:-0} -gt 0 ]; then
+        elif [ "$exit_code" -ne 0 ]; then
           echo "⚠️  Pylint found warnings, refactor suggestions, or convention issues"
           echo "These are reported but don't fail the build"
         else
