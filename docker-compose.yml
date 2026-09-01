@@ -1,0 +1,73 @@
+services:
+  phpipam-mcp:
+    build: .
+    image: phpipam-mcp-server:latest
+    container_name: phpipam-mcp
+    environment:
+      MCP_TRANSPORT: streamable-http
+      MCP_HOST: "0.0.0.0"
+      MCP_PORT: "8000"
+      MCP_PATH: /mcp
+      # Static bearer token protecting the endpoint (required). See .env
+      MCP_BEARER_TOKEN: ${MCP_BEARER_TOKEN:?set MCP_BEARER_TOKEN in .env}
+      # Optional server-wide phpIPAM fallback creds. Leave empty to force
+      # per-client credentials passed through HTTP headers.
+      PHPIPAM_URL: ${PHPIPAM_URL:-}
+      PHPIPAM_APP_ID: ${PHPIPAM_APP_ID:-}
+      PHPIPAM_APP_CODE: ${PHPIPAM_APP_CODE:-}
+      PHPIPAM_VERIFY_SSL: ${PHPIPAM_VERIFY_SSL:-true}
+    # Only reachable from the caddy service on the internal compose network;
+    # never published to the host.
+    expose:
+      - "8000"
+    # Hardening: drop all Linux capabilities (this service binds an
+    # unprivileged port and needs none) and block privilege escalation.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # Liveness probe against the built-in /health endpoint.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # TLS termination + public domain. Caddy obtains a Let's Encrypt cert
+  # automatically for the configured domain.
+  caddy:
+    image: caddy:2
+    container_name: phpipam-mcp-caddy
+    depends_on:
+      - phpipam-mcp
+    # Ports 80/443 are required: this is the public HTTPS entrypoint and
+    # Let's Encrypt HTTP-01/TLS-ALPN challenges must reach the standard ports.
+    # Bind explicitly to all host interfaces (0.0.0.0) to make the intent clear.
+    ports:
+      - "0.0.0.0:80:80"
+      - "0.0.0.0:443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    # Hardening: drop all capabilities, then add back only NET_BIND_SERVICE so
+    # Caddy can bind the privileged ports 80/443. Block privilege escalation.
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:80/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -1,31 +1,107 @@
 #!/usr/bin/env python3
-"""phpIPAM MCP Server - Provides phpIPAM API access through MCP protocol."""
+"""phpIPAM MCP Server - Provides phpIPAM API access through MCP protocol.
 
+Supports two transports:
+
+* ``stdio``           : classic local mode (default, backwards compatible).
+* ``streamable-http`` : remote mode, exposes the server on an HTTP endpoint
+                        (e.g. https://phpipam.domaine.com/mcp) behind a reverse
+                        proxy that terminates TLS.
+
+Configuration (environment variables)
+--------------------------------------
+Transport / network:
+    MCP_TRANSPORT     "stdio" (default) or "streamable-http"
+    MCP_HOST          bind address in HTTP mode (default "0.0.0.0")
+    MCP_PORT          bind port in HTTP mode (default "8000")
+    MCP_PATH          HTTP path for the MCP endpoint (default "/mcp")
+    MCP_BEARER_TOKEN  if set, clients must send "Authorization: Bearer <token>"
+
+phpIPAM credentials (server-wide fallback; can be overridden per client
+through HTTP headers in remote mode):
+    PHPIPAM_URL, PHPIPAM_APP_ID, PHPIPAM_APP_CODE
+    PHPIPAM_VERIFY_SSL  "true" (default) / "false"
+
+Per-client phpIPAM credentials (remote mode, sent as HTTP headers):
+    X-phpIPAM-URL, X-phpIPAM-App-Id, X-phpIPAM-App-Code, X-phpIPAM-Verify-Ssl
+"""
+
+import contextvars
+import hmac
 import os
+
 import requests
 from mcp.server.fastmcp import FastMCP
 
-# Create MCP server
-mcp = FastMCP("phpIPAM Server")
+# ---------------------------------------------------------------------------
+# Remote (HTTP) request context
+# ---------------------------------------------------------------------------
+# In HTTP mode an ASGI middleware stores the incoming request headers here so
+# that the tool functions can resolve per-client phpIPAM credentials without
+# having to thread a Context object through every tool.
+_request_headers: contextvars.ContextVar[dict] = contextvars.ContextVar(
+    "phpipam_request_headers", default={}
+)
+
+
+def _env_truthy(value: str | None, default: bool = True) -> bool:
+    """Interpret an environment/header string as a boolean."""
+    if value is None:
+        return default
+    return value.strip().lower() not in ("0", "false", "no", "off", "")
+
+
+# Create MCP server. Host/port/path only matter for the HTTP transport.
+mcp = FastMCP(
+    "phpIPAM Server",
+    host=os.getenv("MCP_HOST", "0.0.0.0"),
+    port=int(os.getenv("MCP_PORT", "8000")),
+    streamable_http_path=os.getenv("MCP_PATH", "/mcp"),
+    # Stateless + JSON responses keep the remote endpoint simple and scalable
+    # behind a reverse proxy / load balancer.
+    stateless_http=True,
+    json_response=True,
+)
+
 
 def get_phpipam_config():
-    """Get phpIPAM configuration from environment variables"""
-    base_url = os.getenv('PHPIPAM_URL')
-    app_id = os.getenv('PHPIPAM_APP_ID')
-    token = os.getenv('PHPIPAM_APP_CODE')
+    """Resolve phpIPAM configuration.
+
+    Resolution order for each value:
+      1. Per-client HTTP header (remote mode), e.g. ``X-phpIPAM-URL``.
+      2. Server-wide environment variable, e.g. ``PHPIPAM_URL``.
+    """
+    headers = _request_headers.get()
+
+    base_url = headers.get("x-phpipam-url") or os.getenv("PHPIPAM_URL")
+    app_id = headers.get("x-phpipam-app-id") or os.getenv("PHPIPAM_APP_ID")
+    token = headers.get("x-phpipam-app-code") or os.getenv("PHPIPAM_APP_CODE")
+
+    verify_raw = headers.get("x-phpipam-verify-ssl")
+    if verify_raw is None:
+        verify_raw = os.getenv("PHPIPAM_VERIFY_SSL")
+    verify_ssl = _env_truthy(verify_raw, default=True)
 
     if not base_url:
-        raise ValueError("PHPIPAM_URL environment variable is required")
+        raise ValueError(
+            "phpIPAM URL is required (PHPIPAM_URL env var or X-phpIPAM-URL header)"
+        )
     if not app_id:
-        raise ValueError("PHPIPAM_APP_ID environment variable is required")
+        raise ValueError(
+            "phpIPAM App ID is required "
+            "(PHPIPAM_APP_ID env var or X-phpIPAM-App-Id header)"
+        )
     if not token:
-        raise ValueError("PHPIPAM_APP_CODE environment variable is required")
+        raise ValueError(
+            "phpIPAM App Code is required "
+            "(PHPIPAM_APP_CODE env var or X-phpIPAM-App-Code header)"
+        )
 
     return {
         'base_url': base_url.rstrip('/'),
         'app_id': app_id,
         'token': token,
-        'verify_ssl': True
+        'verify_ssl': verify_ssl
     }
 
 def filter_fields(data, include_fields=None, exclude_fields=None):
@@ -329,6 +405,49 @@ def search_addresses(ip_or_hostname: str, limit: int = 10) -> str:
             return f"No addresses found matching '{ip_or_hostname}'. " + \
                    "Try searching with a complete IP address or exact hostname."
         return _handle_error(e, f"searching for '{ip_or_hostname}'")
+
+@mcp.tool()
+def search_hostname(hostname: str, limit: int = 10) -> str:
+    """Search for IP addresses by exact or partial hostname in phpIPAM.
+
+    CONTEXT OPTIMIZATION: Limited to 10 results by default.
+
+    Args:
+        hostname: Hostname to search for
+        limit: Maximum number of results to return (default: 10, max: 50)
+    """
+    try:
+        if '*' in hostname:
+            import fnmatch
+            result = make_request("addresses/")
+            if not result.get('success'):
+                return f"API Error: {result.get('message', 'Failed to fetch addresses')}"
+
+            all_addresses = result.get('data', [])
+            addresses = [
+                addr for addr in all_addresses
+                if addr.get('hostname') and fnmatch.fnmatch(addr.get('hostname', '').lower(), hostname.lower())
+            ]
+        else:
+            result = make_request(f"addresses/search_hostname/{hostname}/")
+            if not result.get('success'):
+                return f"API Error: {result.get('message', 'No results found')}"
+            addresses = result.get('data', [])
+
+        if not addresses:
+            return f"No addresses found matching hostname '{hostname}'"
+
+        # Apply limit and field filtering
+        addresses, truncated = apply_result_limit(addresses, limit, 50)
+        default_fields = ['id', 'subnetId', 'ip', 'hostname', 'description']
+        addresses = apply_field_filtering(addresses, "", default_fields)
+
+        return format_address_output(addresses, hostname, limit, truncated)
+
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        if "404" in str(e):
+            return f"No addresses found matching hostname '{hostname}'."
+        return _handle_error(e, f"searching for hostname '{hostname}'")
 
 @mcp.tool()
 def get_subnet_details(subnet_id: str, include_addresses: bool = False,
@@ -737,9 +856,88 @@ def delete_subnet(subnet_id: str) -> str:
     except Exception as e:  # pylint: disable=broad-exception-caught
         return _handle_error(e, f"deleting subnet {subnet_id}")
 
+
+# ---------------------------------------------------------------------------
+# Health check (useful for reverse proxies / container orchestration)
+# ---------------------------------------------------------------------------
+@mcp.custom_route("/health", methods=["GET"])
+async def health_check(_request):  # pragma: no cover - trivial
+    """Liveness probe; does not touch phpIPAM."""
+    from starlette.responses import JSONResponse
+    return JSONResponse({"status": "ok"})
+
+
+# ---------------------------------------------------------------------------
+# Remote-mode middleware: bearer auth + per-client header capture
+# ---------------------------------------------------------------------------
+class RemoteContextMiddleware:
+    """Pure-ASGI middleware (runs in the same task as the endpoint, so the
+    contextvar set here is visible to the tool functions).
+
+    Responsibilities:
+      * Enforce a static bearer token when MCP_BEARER_TOKEN is set.
+      * Capture incoming HTTP headers into a contextvar for per-client creds.
+    """
+
+    def __init__(self, app):
+        self.app = app
+        self.expected_token = os.getenv("MCP_BEARER_TOKEN")
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        headers = {
+            k.decode("latin-1").lower(): v.decode("latin-1")
+            for k, v in scope.get("headers", [])
+        }
+
+        # Allow unauthenticated health checks.
+        path = scope.get("path", "")
+        if self.expected_token and not path.rstrip("/").endswith("/health"):
+            provided = headers.get("authorization", "")
+            prefix = "Bearer "
+            ok = provided.startswith(prefix) and hmac.compare_digest(
+                provided[len(prefix):], self.expected_token
+            )
+            if not ok:
+                from starlette.responses import JSONResponse
+                response = JSONResponse(
+                    {"error": "unauthorized"},
+                    status_code=401,
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+                await response(scope, receive, send)
+                return
+
+        token = _request_headers.set(headers)
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            _request_headers.reset(token)
+
+
+def build_http_app():
+    """Build the Starlette ASGI app for remote (streamable-http) mode."""
+    app = mcp.streamable_http_app()
+    return RemoteContextMiddleware(app)
+
+
 def main():
     """Main entry point for the MCP server."""
-    mcp.run()
+    transport = os.getenv("MCP_TRANSPORT", "stdio").lower()
+
+    if transport in ("streamable-http", "http", "streamable_http"):
+        import uvicorn
+        uvicorn.run(
+            build_http_app(),
+            host=mcp.settings.host,
+            port=mcp.settings.port,
+            log_level=mcp.settings.log_level.lower(),
+        )
+    else:
+        mcp.run()
 
 if __name__ == "__main__":
     main()
