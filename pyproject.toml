@@ -14,7 +14,7 @@ dependencies = [
     # mcp is held on the latest 1.x release: 2.x renames FastMCP to MCPServer
     # and removes mcp.server.fastmcp, which this server imports. Moving to 2.x
     # is a separate, breaking migration.
-    "mcp==1.27.2",
+    "mcp==1.28.1",
     "requests==2.34.2",
     "uvicorn[standard]>=0.34",
 ]
