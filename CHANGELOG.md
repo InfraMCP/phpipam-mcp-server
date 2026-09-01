@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-01
+### Added
+- **Remote streamable-http transport** (`MCP_TRANSPORT=streamable-http`): run the
+  server as an HTTP service behind a TLS reverse proxy. `stdio` remains the
+  default, so existing local installs are unaffected.
+  - Static bearer-token authentication (`MCP_BEARER_TOKEN`).
+  - Per-client phpIPAM credentials via `X-phpIPAM-*` HTTP headers, with
+    server-wide environment-variable fallback.
+  - Unauthenticated `/health` endpoint for liveness probes.
+- `search_hostname` tool: search IP addresses by exact or partial hostname
+  (supports `*` wildcards).
+- Docker / Caddy remote-deployment assets (`Dockerfile`, `docker-compose.yml`,
+  `Caddyfile`, `.env.example`) and an English `DEPLOYMENT.md` guide.
+
+### Changed
+- Raised the result-limit ceilings from 50/100 to 1000 across the listing and
+  search tools so full subnets can be retrieved (defaults are unchanged).
+- Requires Python 3.10+.
+- Dependency updates: `mcp==1.28.1`, `requests==2.34.2`, `uvicorn[standard]>=0.34`.
+
+### Security
+- Hardened the container image: base image pinned by digest, `apt-get upgrade`
+  to pull the fixed OpenSSL, and pinned/upgraded pip and setuptools.
+- Hardened `docker-compose.yml`: dropped all Linux capabilities (Caddy keeps only
+  `NET_BIND_SERVICE`), `no-new-privileges`, and per-service healthchecks.
+
+### Fixed
+- pylint CI now lints against the project's pinned dependencies and correctly
+  fails on error/fatal findings (the gate previously ran with `--exit-zero`).
+
 ## [0.2.1] - 2025-10-03
 
 ### Added
