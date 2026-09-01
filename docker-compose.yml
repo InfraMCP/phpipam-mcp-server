@@ -1,0 +1,41 @@
+services:
+  phpipam-mcp:
+    build: .
+    image: phpipam-mcp-server:latest
+    container_name: phpipam-mcp
+    environment:
+      MCP_TRANSPORT: streamable-http
+      MCP_HOST: "0.0.0.0"
+      MCP_PORT: "8000"
+      MCP_PATH: /mcp
+      # Static bearer token protecting the endpoint (required). See .env
+      MCP_BEARER_TOKEN: ${MCP_BEARER_TOKEN:?set MCP_BEARER_TOKEN in .env}
+      # Optional server-wide phpIPAM fallback creds. Leave empty to force
+      # per-client credentials passed through HTTP headers.
+      PHPIPAM_URL: ${PHPIPAM_URL:-}
+      PHPIPAM_APP_ID: ${PHPIPAM_APP_ID:-}
+      PHPIPAM_APP_CODE: ${PHPIPAM_APP_CODE:-}
+      PHPIPAM_VERIFY_SSL: ${PHPIPAM_VERIFY_SSL:-true}
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  # TLS termination + public domain. Caddy obtains a Let's Encrypt cert
+  # automatically for the configured domain (ports 80/443 must be reachable).
+  caddy:
+    image: caddy:2
+    container_name: phpipam-mcp-caddy
+    depends_on:
+      - phpipam-mcp
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

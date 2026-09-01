@@ -1,0 +1,8 @@
+# Replace with your real domain. Caddy will fetch a TLS cert automatically.
+phpipam.domaine.com {
+	# Forward everything (the MCP endpoint lives at /mcp, health at /health)
+	reverse_proxy phpipam-mcp:8000 {
+		# Keep streaming responses (SSE) flowing without buffering.
+		flush_interval -1
+	}
+}
