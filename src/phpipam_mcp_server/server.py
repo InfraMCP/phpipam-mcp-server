@@ -219,7 +219,7 @@ def get_subnet_addresses(subnet_id, address_limit):
             return "\nNo addresses found in this subnet"
 
         # Apply limit
-        address_limit = min(address_limit, 50)
+        address_limit = min(address_limit, 1000)
         if len(addresses) > address_limit:
             addresses = addresses[:address_limit]
             truncated = True
@@ -348,7 +348,7 @@ def get_section_subnets(section_id: str, include_usage: bool = True,
         section_id: Section ID to get subnets from
         include_usage: Include usage statistics (default: True)
         include_fields: Comma-separated fields to include (default: essential only)
-        limit: Maximum number of subnets to return (default: 20, max: 100)
+        limit: Maximum number of subnets to return (default: 20, max: 1000)
     """
     try:
         result = make_request(f"sections/{section_id}/subnets/")
@@ -361,7 +361,7 @@ def get_section_subnets(section_id: str, include_usage: bool = True,
             return f"No subnets found in section {section_id}"
 
         # Apply limit and field filtering
-        subnets, truncated = apply_result_limit(subnets, limit, 100)
+        subnets, truncated = apply_result_limit(subnets, limit, 1000)
 
         default_fields = ['id', 'subnet', 'mask', 'description']
         if include_usage:
@@ -381,7 +381,7 @@ def search_addresses(ip_or_hostname: str, limit: int = 10) -> str:
 
     Args:
         ip_or_hostname: IP address or hostname to search for
-        limit: Maximum number of results to return (default: 10, max: 50)
+        limit: Maximum number of results to return (default: 10, max: 1000)
     """
     try:
         result = make_request(f"addresses/search/{ip_or_hostname}/")
@@ -394,7 +394,7 @@ def search_addresses(ip_or_hostname: str, limit: int = 10) -> str:
             return f"No addresses found matching '{ip_or_hostname}'"
 
         # Apply limit and field filtering
-        addresses, truncated = apply_result_limit(addresses, limit, 50)
+        addresses, truncated = apply_result_limit(addresses, limit, 1000)
         default_fields = ['id', 'subnetId', 'ip', 'hostname', 'description']
         addresses = apply_field_filtering(addresses, "", default_fields)
 
@@ -481,7 +481,7 @@ def list_vlans(domain_id: str = None, limit: int = 20) -> str:
 
     Args:
         domain_id: Optional domain ID to filter VLANs
-        limit: Maximum number of VLANs to return (default: 20, max: 100)
+        limit: Maximum number of VLANs to return (default: 20, max: 1000)
     """
     try:
         endpoint = "vlan/"
@@ -498,7 +498,7 @@ def list_vlans(domain_id: str = None, limit: int = 20) -> str:
             return "No VLANs found"
 
         # Apply limit and field filtering
-        vlans, truncated = apply_result_limit(vlans, limit, 100)
+        vlans, truncated = apply_result_limit(vlans, limit, 1000)
         default_fields = ['vlanId', 'name', 'number', 'description']
         vlans = apply_field_filtering(vlans, "", default_fields)
 
@@ -514,7 +514,7 @@ def list_vrfs(limit: int = 20) -> str:
     CONTEXT OPTIMIZATION: Limited to 20 results by default.
 
     Args:
-        limit: Maximum number of VRFs to return (default: 20, max: 100)
+        limit: Maximum number of VRFs to return (default: 20, max: 1000)
     """
     try:
         result = make_request("vrf/")
@@ -527,7 +527,7 @@ def list_vrfs(limit: int = 20) -> str:
             return "No VRFs found"
 
         # Apply limit and field filtering
-        vrfs, truncated = apply_result_limit(vrfs, limit, 100)
+        vrfs, truncated = apply_result_limit(vrfs, limit, 1000)
         default_fields = ['vrfId', 'name', 'rd', 'description']
         vrfs = apply_field_filtering(vrfs, "", default_fields)
 
@@ -556,7 +556,7 @@ def list_locations(limit: int = 20) -> str:
     CONTEXT OPTIMIZATION: Limited to 20 results by default.
 
     Args:
-        limit: Maximum number of locations to return (default: 20, max: 100)
+        limit: Maximum number of locations to return (default: 20, max: 1000)
     """
     try:
         result = make_request("tools/locations/")
@@ -569,7 +569,7 @@ def list_locations(limit: int = 20) -> str:
             return "No locations found"
 
         # Apply limit and field filtering
-        locations, truncated = apply_result_limit(locations, limit, 100)
+        locations, truncated = apply_result_limit(locations, limit, 1000)
         default_fields = ['id', 'name', 'address', 'description']
         locations = apply_field_filtering(locations, "", default_fields)
 
@@ -598,7 +598,7 @@ def list_nameservers(limit: int = 20) -> str:
     CONTEXT OPTIMIZATION: Limited to 20 results by default.
 
     Args:
-        limit: Maximum number of nameservers to return (default: 20, max: 100)
+        limit: Maximum number of nameservers to return (default: 20, max: 1000)
     """
     try:
         result = make_request("tools/nameservers/")
@@ -611,7 +611,7 @@ def list_nameservers(limit: int = 20) -> str:
             return "No nameservers found"
 
         # Apply limit and field filtering
-        nameservers, truncated = apply_result_limit(nameservers, limit, 100)
+        nameservers, truncated = apply_result_limit(nameservers, limit, 1000)
         default_fields = ['id', 'name', 'namesrv1', 'description']
         nameservers = apply_field_filtering(nameservers, "", default_fields)
 
@@ -641,7 +641,7 @@ def search_subnets(query: str, limit: int = 10) -> str:
 
     Args:
         query: Search term (CIDR, description, etc.)
-        limit: Maximum number of results to return (default: 10, max: 50)
+        limit: Maximum number of results to return (default: 10, max: 1000)
     """
     try:
         result = make_request(f"subnets/search/{query}/")
@@ -654,7 +654,7 @@ def search_subnets(query: str, limit: int = 10) -> str:
             return f"No subnets found matching '{query}'"
 
         # Apply limit and field filtering
-        subnets, truncated = apply_result_limit(subnets, limit, 50)
+        subnets, truncated = apply_result_limit(subnets, limit, 1000)
         default_fields = ['id', 'subnet', 'mask', 'description', 'sectionId', 'usage']
         subnets = apply_field_filtering(subnets, "", default_fields)
 
