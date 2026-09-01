@@ -40,7 +40,9 @@ dev = [
     "pytest==9.1.1",
     "pytest-asyncio==1.4.0",
     "black==26.5.1",
-    "isort==9.0.1",
+    # isort held at 5.13.2: the 9.x line scores poorly on Socket's supply-chain
+    # signal (recently published, low adoption). 5.13.2 is mature and widely used.
+    "isort==5.13.2",
     "mypy>=1.0.0",
     "build>=0.10.0",
     "twine>=4.0.0",
