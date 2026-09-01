@@ -11,9 +11,12 @@ license = {text = "MIT"}
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    # mcp is held on the latest 1.x release: 2.x renames FastMCP to MCPServer
+    # and removes mcp.server.fastmcp, which this server imports. Moving to 2.x
+    # is a separate, breaking migration.
     "mcp==1.27.2",
-    "requests==2.33.0",
-    "uvicorn[standard]>=0.30",
+    "requests==2.34.2",
+    "uvicorn[standard]>=0.34",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -34,10 +37,10 @@ Documentation = "https://github.com/InfraMCP/phpipam-mcp-server#readme"
 
 [project.optional-dependencies]
 dev = [
-    "pytest==8.3.3",
-    "pytest-asyncio==0.24.0",
-    "black==24.8.0",
-    "isort==5.13.2",
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "black==26.5.1",
+    "isort==9.0.1",
     "mypy>=1.0.0",
     "build>=0.10.0",
     "twine>=4.0.0",
