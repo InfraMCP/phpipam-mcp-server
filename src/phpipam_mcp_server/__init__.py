@@ -2,7 +2,10 @@
 
 __version__ = "0.3.0"
 
-__all__ = ["main"]
+# ``main`` is provided lazily via ``__getattr__`` below (to avoid importing the
+# MCP stack at package import). Pylint's static check cannot see that, so the
+# undefined-all-variable warning for it is a false positive here.
+__all__ = ["main"]  # pylint: disable=undefined-all-variable
 
 
 def __getattr__(name):
