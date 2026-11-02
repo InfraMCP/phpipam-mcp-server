@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- **Agent-friendly `phpipam` CLI** (`phpipam` console script): a command-line
+  interface over the same phpIPAM API, with no MCP dependency. Every command
+  supports `--json` for machine-readable output, stable documented exit codes
+  (0 ok / 1 api / 2 usage / 3 config / 4 auth / 5 not-found / 6 refused), and a
+  `--yes` confirmation guard on all write operations. Credentials come from the
+  existing `PHPIPAM_*` env vars or `--url` / `--app-id` / `--app-code` flags.
+- `tests/` suite covering the CLI contract (output shape, exit codes, write
+  guard) against a mocked HTTP layer.
+
+### Changed
+- Extracted the shared API layer (credential resolution, authenticated
+  request helper, response field-filtering/limiting) into a new
+  `phpipam_mcp_server.client` module, reused by both the MCP server and the CLI.
+  API errors are now raised as a classified `PhpIpamError` (`config` / `auth` /
+  `notfound` / `network` / `api`).
+- The package `__init__` now resolves `main` lazily, so importing the CLI or the
+  shared client no longer pulls in the MCP server stack.
+
+### Fixed
+- `__version__` corrected to `0.3.0` (the `0.3.0` release left it at `0.2.1`).
 
 ## [0.3.0] - 2026-09-01
 ### Added

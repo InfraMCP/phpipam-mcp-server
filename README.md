@@ -32,6 +32,78 @@ pip install -e .
 pip install -e ".[dev]"
 ```
 
+## Command-line interface (`phpipam`)
+
+Alongside the MCP server, the package ships an **agent-friendly CLI** called
+`phpipam`. It talks to the same phpIPAM API without any MCP machinery, which
+makes it a reliable fallback when an MCP transport is awkward to wire up (for
+example, when a host does not pass the server's environment through cleanly).
+
+It is built for automation:
+
+- **`--json` on every command** for machine-readable output. In JSON mode,
+  success prints `{"ok": true, "data": ...}` to stdout and any error prints
+  `{"ok": false, "error": {"kind": ..., "message": ...}}` to stderr.
+- **Stable, documented exit codes** so a script or agent can branch on the
+  result without parsing text:
+
+  | Code | Meaning |
+  |------|---------|
+  | 0 | success |
+  | 1 | phpIPAM API / network error |
+  | 2 | usage error (bad arguments) |
+  | 3 | configuration error (missing credentials) |
+  | 4 | authentication rejected by phpIPAM |
+  | 5 | resource not found |
+  | 6 | refused: a write was requested without `--yes` |
+
+- **Safe by default.** Read commands run immediately. Every write command
+  (`create-subnet`, `reserve-ip`, `update-ip`, `delete-ip`, `update-subnet`,
+  `delete-subnet`) refuses to run unless `--yes` is passed, printing exactly
+  what it *would* do first.
+
+### Credentials
+
+The CLI resolves credentials from the same environment variables as the server,
+or from flags (flags win):
+
+```bash
+export PHPIPAM_URL="https://ipam.example.com/"
+export PHPIPAM_APP_ID="my-app-id"
+export PHPIPAM_APP_CODE="my-app-code-token"
+# ...or pass --url / --app-id / --app-code on any command.
+```
+
+> Prefer the environment variables for the app code. A value passed via
+> `--app-code` is visible in the host's process list.
+
+### Examples
+
+```bash
+# List sections (human-readable)
+phpipam sections
+
+# Same, as JSON for a script to parse
+phpipam --json sections
+
+# Subnets in section 3, capped at 5 rows
+phpipam subnets 3 --limit 5
+
+# Find an address
+phpipam search-address 10.0.0.1
+
+# A write is refused unless confirmed (exit code 6)
+phpipam delete-subnet 42
+# error (refused): refusing to run a write operation without confirmation.
+# would: DELETE subnet 42 (this removes ALL IP addresses in the subnet)
+# re-run with --yes to proceed.
+
+# Confirmed write
+phpipam create-subnet 3 192.168.50.0 24 --description "lab" --yes
+```
+
+Run `phpipam --help` or `phpipam <command> --help` for the full list.
+
 ## Usage
 
 The server supports two transports, selected with the `MCP_TRANSPORT` environment
