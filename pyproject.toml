@@ -55,9 +55,13 @@ security = [
 
 [project.scripts]
 phpipam-mcp-server = "phpipam_mcp_server:main"
+phpipam = "phpipam_mcp_server.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [tool.black]
 line-length = 88

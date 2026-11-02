@@ -26,30 +26,23 @@ Per-client phpIPAM credentials (remote mode, sent as HTTP headers):
     X-phpIPAM-URL, X-phpIPAM-App-Id, X-phpIPAM-App-Code, X-phpIPAM-Verify-Ssl
 """
 
-import contextvars
 import hmac
 import os
 
-import requests
 from mcp.server.fastmcp import FastMCP
 
-# ---------------------------------------------------------------------------
-# Remote (HTTP) request context
-# ---------------------------------------------------------------------------
-# In HTTP mode an ASGI middleware stores the incoming request headers here so
-# that the tool functions can resolve per-client phpIPAM credentials without
-# having to thread a Context object through every tool.
-_request_headers: contextvars.ContextVar[dict] = contextvars.ContextVar(
-    "phpipam_request_headers", default={}
+from .client import (
+    PhpIpamError,
+    _request_headers,
+    apply_field_filtering,
+    apply_result_limit,
+    filter_fields,
+    make_request,
 )
 
-
-def _env_truthy(value: str | None, default: bool = True) -> bool:
-    """Interpret an environment/header string as a boolean."""
-    if value is None:
-        return default
-    return value.strip().lower() not in ("0", "false", "no", "off", "")
-
+# ``_request_headers``, the shared credential/HTTP helpers, and the response
+# shaping helpers now live in ``client.py`` so the CLI can reuse them without
+# importing the MCP stack. They are imported above and re-exported implicitly.
 
 # Create MCP server. Host/port/path only matter for the HTTP transport.
 mcp = FastMCP(
@@ -63,71 +56,6 @@ mcp = FastMCP(
     json_response=True,
 )
 
-
-def get_phpipam_config():
-    """Resolve phpIPAM configuration.
-
-    Resolution order for each value:
-      1. Per-client HTTP header (remote mode), e.g. ``X-phpIPAM-URL``.
-      2. Server-wide environment variable, e.g. ``PHPIPAM_URL``.
-    """
-    headers = _request_headers.get()
-
-    base_url = headers.get("x-phpipam-url") or os.getenv("PHPIPAM_URL")
-    app_id = headers.get("x-phpipam-app-id") or os.getenv("PHPIPAM_APP_ID")
-    token = headers.get("x-phpipam-app-code") or os.getenv("PHPIPAM_APP_CODE")
-
-    verify_raw = headers.get("x-phpipam-verify-ssl")
-    if verify_raw is None:
-        verify_raw = os.getenv("PHPIPAM_VERIFY_SSL")
-    verify_ssl = _env_truthy(verify_raw, default=True)
-
-    if not base_url:
-        raise ValueError(
-            "phpIPAM URL is required (PHPIPAM_URL env var or X-phpIPAM-URL header)"
-        )
-    if not app_id:
-        raise ValueError(
-            "phpIPAM App ID is required "
-            "(PHPIPAM_APP_ID env var or X-phpIPAM-App-Id header)"
-        )
-    if not token:
-        raise ValueError(
-            "phpIPAM App Code is required "
-            "(PHPIPAM_APP_CODE env var or X-phpIPAM-App-Code header)"
-        )
-
-    return {
-        'base_url': base_url.rstrip('/'),
-        'app_id': app_id,
-        'token': token,
-        'verify_ssl': verify_ssl
-    }
-
-def filter_fields(data, include_fields=None, exclude_fields=None):
-    """Filter fields from API response data to reduce context window usage.
-
-    Args:
-        data: API response data (dict or list of dicts)
-        include_fields: List of fields to keep (if specified, only these are kept)
-        exclude_fields: List of fields to remove (ignored if include_fields is specified)
-    """
-    if not isinstance(data, (dict, list)):
-        return data
-
-    def filter_single_item(item):
-        if not isinstance(item, dict):
-            return item
-
-        if include_fields:
-            return {k: v for k, v in item.items() if k in include_fields}
-        if exclude_fields:
-            return {k: v for k, v in item.items() if k not in exclude_fields}
-        return item
-
-    if isinstance(data, list):
-        return [filter_single_item(item) for item in data]
-    return filter_single_item(data)
 
 def format_subnet_output(subnets, section_id, limit, truncated, include_usage):
     """Format subnet data for compact output."""
@@ -242,26 +170,27 @@ def get_subnet_addresses(subnet_id, address_limit):
     except Exception:  # pylint: disable=broad-exception-caught
         return "\nCould not retrieve addresses for this subnet"
 
-def apply_field_filtering(data, include_fields, default_fields):
-    """Apply field filtering to data."""
-    if include_fields == "all":
-        return data
-    if include_fields:
-        fields = [f.strip() for f in include_fields.split(',')]
-        return filter_fields(data, include_fields=fields)
-    return filter_fields(data, include_fields=default_fields)
-
-def apply_result_limit(data, limit, max_limit):
-    """Apply result limiting with truncation tracking."""
-    limit = min(limit, max_limit)
-    if len(data) > limit:
-        return data[:limit], True
-    return data, False
-
 def _handle_error(e: Exception, operation: str) -> str:
-    """Handle errors consistently across all tools."""
-    error_msg = str(e)
+    """Render an exception as a user-facing MCP tool string.
 
+    Prefers the structured :class:`~phpipam_mcp_server.client.PhpIpamError`
+    classification; falls back to substring matching for anything else.
+    """
+    if isinstance(e, PhpIpamError):
+        if e.kind == "auth":
+            return (
+                f"Authentication failed for {operation}. "
+                "Check PHPIPAM_APP_CODE (app code token)."
+            )
+        if e.kind == "notfound":
+            return f"Resource not found for {operation}. Check the provided ID or parameters."
+        if e.kind == "network":
+            return f"Connection failed for {operation}. Check network connectivity and PHPIPAM_URL."
+        if e.kind == "config":
+            return f"Configuration error for {operation}: {e}"
+        return f"Error in {operation}: {e}"
+
+    error_msg = str(e)
     if "401" in error_msg or "Unauthorized" in error_msg:
         return (
             f"Authentication failed for {operation}. "
@@ -272,27 +201,6 @@ def _handle_error(e: Exception, operation: str) -> str:
     if "404" in error_msg:
         return f"Resource not found for {operation}. Check the provided ID or parameters."
     return f"Error in {operation}: {error_msg}"
-
-def make_request(endpoint: str, method: str = "GET", data: dict = None) -> dict:
-    """Make authenticated request to phpIPAM API."""
-    config = get_phpipam_config()
-    url = f"{config['base_url']}/api/{config['app_id']}/{endpoint.lstrip('/')}"
-
-    headers = {
-        'Content-Type': 'application/json',
-        'token': config['token']
-    }
-
-    response = requests.request(
-        method=method,
-        url=url,
-        headers=headers,
-        json=data,
-        verify=config['verify_ssl'],
-        timeout=30
-    )
-    response.raise_for_status()
-    return response.json()
 
 @mcp.tool()
 def list_sections(include_fields: str = "") -> str:
